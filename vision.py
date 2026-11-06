@@ -9,12 +9,17 @@ _NEI = [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]
 
 
 def viam_to_bgr(img):
-    """Convert whatever cam.get_image() returned into an OpenCV BGR array."""
+    """Convert a Viam image (ViamImage / NamedImage / PIL) into an OpenCV BGR array."""
+    data = getattr(img, "data", None)
+    if isinstance(data, (bytes, bytearray)):            # encoded jpeg/png bytes
+        arr = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+        if arr is not None:
+            return arr
     try:
         from viam.media.utils.pil import viam_to_pil_image
         pil = viam_to_pil_image(img)
     except Exception:
-        pil = Image.open(io.BytesIO(img.data)) if hasattr(img, "data") else img
+        pil = img if isinstance(img, Image.Image) else Image.open(io.BytesIO(data))
     return cv2.cvtColor(np.array(pil.convert("RGB")), cv2.COLOR_RGB2BGR)
 
 

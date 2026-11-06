@@ -13,8 +13,39 @@ async def connect():
 
 
 async def grab_frame(cam):
-    img = await cam.get_image()
-    return viam_to_bgr(img)
+    """Return one COLOR frame as an OpenCV BGR array.
+    Newer viam-sdk: cam.get_images() -> (list of named images, metadata). A RealSense returns
+    color and depth, so we pick the color one. Falls back to cam.get_image() on older SDKs."""
+    if hasattr(cam, "get_images"):
+        try:
+            images, _ = await cam.get_images(filter_source_names=[config.CAM_COLOR_SOURCE])
+        except Exception:
+            images = []
+        if not images:
+            images, _ = await cam.get_images()
+        names = [getattr(i, "name", getattr(i, "source_name", "?")) for i in images]
+        img = _pick_color(images)
+        if img is None:
+            raise RuntimeError(f"No color image found. Sources returned: {names}. "
+                               f"Set CAM_COLOR_SOURCE in config.py to the right name.")
+        return viam_to_bgr(img)
+    return viam_to_bgr(await cam.get_image())
+
+
+def _pick_color(images):
+    def name(i):
+        return str(getattr(i, "name", getattr(i, "source_name", ""))).lower()
+
+    def mime(i):
+        return str(getattr(i, "mime_type", "")).lower()
+
+    for i in images:                       # 1) explicit color name
+        if "color" in name(i) or "rgb" in name(i):
+            return i
+    for i in images:                       # 2) anything that is a normal jpeg/png, not depth
+        if ("jpeg" in mime(i) or "png" in mime(i)) and "depth" not in name(i) and "dep" not in mime(i):
+            return i
+    return images[0] if images else None
 
 
 def save_json(path, obj):
